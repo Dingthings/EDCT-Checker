@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- Version: see APP_VERSION + CHANGELOG in the script. Bump on every revision (SemVer: MAJOR.MINOR.PATCH); file name is edct_lookup_v<version>.html. -->
-<meta name="app-version" content="1.8.0">
+<meta name="app-version" content="1.9.0">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EDCT Flight Lookup</title>
 <style>
@@ -121,6 +121,7 @@ mark.chgt{background:var(--warn);color:#000;padding:0 4px;border-radius:4px}
       <button class="btn" id="qsScan" type="button" title="Re-scan all AADC airports">↻</button>
     </div>
     <select id="qsFlt" style="margin-top:8px" disabled><option value="">Pick an airport first</option></select>
+    <label class="inl" style="margin-top:8px"><input id="qsIntl" type="checkbox" style="width:auto"> Show departures from other countries (outside USA, Canada, Mexico)</label>
     <div class="small" id="qsState" style="margin-top:6px"></div>
   </div>
 
@@ -178,10 +179,13 @@ const $ = id => document.getElementById(id);
 // MAJOR = breaking change (e.g. stored-data format). Save the file as edct_lookup_v<APP_VERSION>.html.
 // Add a CHANGELOG entry at the TOP and keep the <meta name="app-version"> tag in sync.
 // Bump STORAGE_SCHEMA only when the saved data format changes, and add a step to migrateStorage().
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const BUILD_DATE = '2026-11-06';
 const STORAGE_SCHEMA = 2;
 const CHANGELOG = [
+  { v: '1.9.0', date: '2026-11-06', notes: [
+    'Quick select hides departures from airports outside the USA (incl. Alaska, Hawaii, Puerto Rico, USVI, Guam), Canada and Mexico.',
+    'Checkbox "Show departures from other countries" re-enables them (remembered). The flight list shows how many were hidden.' ] },
   { v: '1.8.0', date: '2026-11-06', notes: [
     'New two-column layout: inputs on the left, flights and details on the right (stacks on phones).',
     'Larger Zulu and local times.',
@@ -763,6 +767,16 @@ const isAirline = f => /^[A-Z]{3}\d{1,4}[A-Z]{0,2}$/.test(f.acid)
   && !NON_AIRLINE_MAJOR.has((f.majorAirline || '').toUpperCase())
   && !BIZ_OPS.has(f.acid.slice(0,3)) && !BIZ_TYPES.test(f.type || '');
 
+// Origin region. AADC gives US airports as 3-character FAA LIDs and foreign ones as 4-letter ICAO codes.
+// ICAO prefixes kept: K (contiguous US), PA/PF/PO/PP (Alaska), PH (Hawaii), PG (Guam/N. Marianas),
+// PW/PJ/PM (US Pacific islands), TJ (Puerto Rico), TI (US Virgin Islands), C (Canada), MM (Mexico).
+const NA_ICAO = /^(K|C|MM|PA|PF|PO|PP|PH|PG|PW|PJ|PM|TJ|TI)/;
+const isUsCaMx = code => !code || code.length <= 3 || NA_ICAO.test(code);
+let showIntl = false;
+try{ showIntl = localStorage.getItem('edct_qs_intl') === '1'; }catch{}
+$('qsIntl').checked = showIntl;
+$('qsIntl').onchange = e => { showIntl = e.target.checked; try{ localStorage.setItem('edct_qs_intl', showIntl ? '1' : '0'); }catch{} drawQsFlights(); };
+
 let qs = { airports: [], scanned: 0, scanning: false };
 async function scanPrograms(){
   if(qs.scanning) return;
@@ -814,7 +828,9 @@ async function drawQsFlights(){
   if($('qsApt').value !== apt) return;
   const ref = new Date(Date.UTC(+j.year, +j.month - 1, +j.day));
   const saved = new Set(getRecent().map(r => r.callsign + '|' + r.arr));
-  const fl = allFlights(j).filter(f => isAirline(f) && f.etd && f.etd[0] !== 'A')   // airline, not yet departed
+  const pending = allFlights(j).filter(f => isAirline(f) && f.etd && f.etd[0] !== 'A');   // airline, not yet departed
+  const hiddenIntl = showIntl ? 0 : pending.filter(f => !isUsCaMx(f.origin)).length;
+  const fl = pending.filter(f => showIntl || isUsCaMx(f.origin))
     .map(f => ({ f, etd: parseTfms(f.etd, ref), eta: parseTfms(f.eta, ref) }))
     .sort((a, b) => a.etd.date - b.etd.date);
   const lab = x => {
@@ -824,7 +840,7 @@ async function drawQsFlights(){
   const ctl = fl.filter(x => x.eta && x.eta.type === 'C'), other = fl.filter(x => !(x.eta && x.eta.type === 'C'));
   const opt = x => `<option value="${esc(x.f.acid + '|' + x.f.origin)}">${esc(lab(x))}</option>`;
   const keep = sel.value;
-  sel.innerHTML = `<option value="">Add a flight… (${fl.length} not yet departed)</option>`
+  sel.innerHTML = `<option value="">Add a flight… (${fl.length} not yet departed${hiddenIntl ? `, ${hiddenIntl} from other countries hidden` : ''})</option>`
     + (ctl.length ? `<optgroup label="Controlled by ATC program (${ctl.length})">${ctl.map(opt).join('')}</optgroup>` : '')
     + (other.length ? `<optgroup label="Not controlled (${other.length})">${other.map(opt).join('')}</optgroup>` : '');
   sel.value = keep && [...sel.options].some(o => o.value === keep) ? keep : '';
