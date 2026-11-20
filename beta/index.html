@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- Version: see APP_VERSION + CHANGELOG in the script. Bump on every revision (SemVer: MAJOR.MINOR.PATCH); file name is edct_lookup_v<version>.html. -->
-<meta name="app-version" content="1.9.1">
+<meta name="app-version" content="1.9.9">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EDCT Flight Lookup</title>
 <style>
@@ -12,10 +12,10 @@
 :root[data-theme="dark"]{--bg:#0d1218;--card:#161e28;--fg:#e7ecf2;--mut:#98a5b5;--line:#2a3644;--pri:#3d9bff;--pri-fg:#06121f;--hover:rgba(61,155,255,.10);color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-header{background:var(--pri);color:var(--pri-fg);padding:12px 16px;display:flex;align-items:center;gap:12px}
+header{background:var(--pri);color:var(--pri-fg);padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 header h1{font-size:18px;margin:0;font-weight:700}
 header .sp{flex:1}
-#themeBtn{border:1px solid currentColor;background:transparent;color:inherit;border-radius:16px;padding:5px 12px;font-weight:600;cursor:pointer;font-size:13px}
+#themeBtn,#betaSwitch{border:1px solid currentColor;background:transparent;color:inherit;border-radius:16px;padding:5px 12px;font-weight:600;cursor:pointer;font-size:13px}
 .layout{max-width:1320px;margin:0 auto;padding:16px;display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:16px;align-items:start}
 .col{min-width:0}
 @media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
@@ -47,7 +47,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .hidden{display:none!important}
 .rhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap}
 .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap}
-.p-edct{background:var(--warn);color:#000}.p-cta{border:2px solid var(--warn);color:var(--fg)}.p-none{background:var(--line);color:var(--fg)}.p-miss{background:var(--bad);color:#fff}
+.p-edct{background:#1e6fe0;color:#fff}.p-cta{border:2px solid var(--warn);color:var(--fg)}.p-none{background:var(--line);color:var(--fg)}.p-miss{background:var(--bad);color:#fff}
 /* Big, readable times */
 .zt{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.01em;line-height:1.2}
 .zt-lg{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15}
@@ -67,6 +67,12 @@ body.drag-active,body.drag-active *{cursor:grabbing!important;user-select:none}
 tr.dropped td{animation:dropflash .9s ease-out}
 label.inl{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:13px;color:var(--fg)}
 .alert{margin-bottom:8px;padding:10px 12px;border-radius:6px;background:var(--warn);color:#000;font-weight:600;display:flex;justify-content:space-between;gap:8px}
+.pt-wrap{width:0;min-width:100%;font-size:11px;color:var(--mut);margin-top:3px;line-height:1.35;white-space:nowrap}
+.pt-in{width:58px;padding:2px 5px;font-size:13px;margin:1px 0}.pt-in.bad{border-color:var(--bad)}
+.pdelta{font-size:11px;font-weight:700}.pd-later{color:#c62828}.pd-earlier{color:#2e7d32}
+.cs.rel-exp{background:var(--warn);color:#000;padding:0 5px;border-radius:4px}
+.alert-later{background:#ff9a9a;border-left:6px solid #c62828}
+.alert-earlier{background:#9be3a8;border-left:6px solid #2e7d32}
 .alert button{border:0;background:transparent;cursor:pointer;font-size:18px;color:#000}
 mark.chgt{background:var(--warn);color:#000;padding:0 4px;border-radius:4px}
 .chg{display:inline-block;margin:3px 0 0 6px;padding:2px 8px;border-radius:10px;background:var(--warn);color:#000;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;vertical-align:middle}
@@ -85,7 +91,9 @@ mark.chgt{background:var(--warn);color:#000;padding:0 4px;border-radius:4px}
 <body>
 <header>
   <h1>Flight Lookup (EDCT)</h1><span id="ver" style="font-size:12px;opacity:.85"></span>
+  <span id="utcClock" title="Current UTC (Zulu) day and time" style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;margin-left:4px"></span>
   <span class="sp"></span>
+  <button id="betaSwitch" type="button" style="margin-right:6px"></button>
   <button id="themeBtn" type="button" title="Theme: Auto → Light → Dark">◐ Auto</button>
 </header>
 <div class="layout">
@@ -132,8 +140,11 @@ mark.chgt{background:var(--warn);color:#000;padding:0 4px;border-radius:4px}
       <button class="btn" id="nTest" type="button">Test</button>
     </div>
     <div class="small" id="nState" style="margin:6px 0"></div>
+    <label class="inl" style="margin-bottom:6px"><input id="nOn" type="checkbox" checked style="width:auto"> Alerts on <span class="small">(uncheck to disable all alerts)</span></label><br>
     <label class="inl">Alert when EDCT moves ≥ <input id="nThresh" type="number" min="1" max="240" step="1" value="15" style="width:68px;padding:4px 6px;font-size:14px"> min</label><br>
-    <label class="inl" style="margin-top:6px"><input id="nIssued" type="checkbox" checked style="width:auto"> also when an EDCT is issued / removed</label>
+    <label class="inl" style="margin-top:6px"><input id="nIssued" type="checkbox" checked style="width:auto"> also when an EDCT is issued / removed</label><br>
+    <label class="inl" style="margin-top:6px">Release expires 2 h after the p-time. Warn <input id="pLead" type="number" min="0" max="60" step="1" value="15" style="width:62px;padding:4px 6px;font-size:14px"> min before <span class="small">(flight number turns yellow)</span></label><br>
+    <label class="inl" style="margin-top:6px"><input id="pOn" type="checkbox" checked style="width:auto"> also send an alert when a release is about to expire</label>
   </div>
 
   <div class="card small">
@@ -141,6 +152,10 @@ mark.chgt{background:var(--warn);color:#000;padding:0 4px;border-radius:4px}
     Times are TFMS runway (wheels-off / wheels-on) times, not gate times. Airlines in FAA CDM (e.g. United and its regionals) get their EDCTs privately; for those the FAA publishes only the controlled arrival time (CTA).
     Airport time zones: embedded table (mwgg/Airports, IANA zones). Always confirm departure time with the airline / ATC.
   </div>
+  <div class="card small"><details><summary>Connection test (FAA data sources)</summary>
+    <p style="margin:8px 0"><button class="btn" id="diagBtn" type="button">Run test</button></p>
+    <pre id="diagOut" style="white-space:pre-wrap;margin:0;font-size:12px"></pre></details></div>
+
   <div class="card small"><details><summary>Version <span id="ver2"></span> · changelog</summary><div id="changelog"></div></details></div>
 </div>
 
@@ -179,10 +194,36 @@ const $ = id => document.getElementById(id);
 // MAJOR = breaking change (e.g. stored-data format). Save the file as edct_lookup_v<APP_VERSION>.html.
 // Add a CHANGELOG entry at the TOP and keep the <meta name="app-version"> tag in sync.
 // Bump STORAGE_SCHEMA only when the saved data format changes, and add a step to migrateStorage().
-const APP_VERSION = '1.9.1';
+const APP_VERSION = '1.9.9';
 const BUILD_DATE = '2026-11-15';
 const STORAGE_SCHEMA = 2;
 const CHANGELOG = [
+  { v: '1.9.9', date: '2026-11-20', notes: [
+    'Fixed absurd p-time differences (e.g. −3241 h): the p-time is now tied to the flight\'s own date (closest HHMM to its departure time) instead of the computer\'s date, and a stored p-time more than 18 h from the flight is re-anchored automatically.' ] },
+  { v: '1.9.8', date: '2026-11-20', notes: [
+    'EDCT status pill is now blue; removed the \"EDCT\" word next to the departure time.',
+    'Release expiry is now fixed at 2 hours after the p-time; the setting is how many minutes BEFORE that to warn (default 15). The flight number turns yellow and the alert fires at that point.',
+    'Flight column width back to the old layout: the Release P-time box no longer widens the column.' ] },
+  { v: '1.9.7', date: '2026-11-20', notes: [
+    'Added a Connection test (bottom of page) that checks each FAA endpoint and says whether it is unreachable, refusing the page (CORS) or returning an HTTP error.',
+    'Program scan is gentler on the FAA servers: 4 parallel requests instead of 8, and the result is reused for 10 minutes across page reloads (press the refresh arrow to force a new scan).' ] },
+  { v: '1.9.6', date: '2026-11-20', notes: [
+    'Program scan: when the NAS Status page cannot be read, airports whose AADC control field shows a program are listed as \"possible GDP (unverified)\" instead of disappearing, and the scan status says why NAS Status could not be read.' ] },
+  { v: '1.9.5', date: '2026-11-20', notes: [
+    'P-time box renamed \"Release P-time\", made compact (flight list columns back to their old width) with the EDCT-vs-p-time difference shown below it.',
+    'Release expiry: when the current UTC time is more than 2 hours (adjustable) past a flight\'s p-time, the flight number turns yellow and one alert is sent. Replaces the EDCT-vs-p-time alert.',
+    'Added a live UTC day/time clock to the header.' ] },
+  { v: '1.9.4', date: '2026-11-20', notes: [
+    'Status now reads EDCT for CTA-controlled flights too (the departure time shown has matched the real EDCT); EDCT change tags, sorting and alerts treat them the same as published EDCTs.',
+    'Added an on/off switch for all alerts in Notifications.',
+    'Each flight row has a \"sent with p-time\" box (UTC, HHMM). New alert: when the EDCT is at least N minutes (default 120) later and/or earlier than the p-time.' ] },
+  { v: '1.9.3', date: '2026-11-20', notes: [
+    'Removed the \"EDCT not public\" wording: CTA-controlled flights are now labelled just \"CTA\", since the departure time shown is the controlled time.' ] },
+  { v: '1.9.2', date: '2026-11-20', notes: [
+    'Alerts now track and show the departure time (ETD) instead of the CTA arrival time.',
+    'Alert windows are shorter (\"ETD EARLIER by 30 min - UAL1 ORD→EWR\" / \"New ETD 1400Z, was 1430Z\", no local time) and colour-coded: red = later, green = earlier.',
+    'Added a Switch to beta / Switch to main button (main = /EDCT-Checker, beta = /EDCT-Checker/beta).',
+    'GDP list is now read from the Ground Delay Programs section of the NAS Status feed.' ] },
   { v: '1.9.1', date: '2026-11-15', notes: [
     'Fixed false "ground delay program" labels: any AADC control text other than "No GDP" (e.g. "None") was treated as a GDP. GDPs are now taken from the FAA NAS Status page (nasstatus.faa.gov) when the browser can read it, otherwise only an AADC value of "Actual" counts.',
     'Fixed notifications: CTA (arrival slot) changes now alert too (most GDP flights have no published EDCT, so nothing ever fired); a departed, cancelled or dropped-from-feed flight no longer triggers a false "EDCT removed" alert; one error can no longer stop auto refresh permanently.',
@@ -303,6 +344,7 @@ function parseTfms(s, ref){
 
 // Zulu as "Nov 06 0118Z" (UTC date + HHMM, aviation style)
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtHM = d => `${d.toISOString().slice(11,13)}${d.toISOString().slice(14,16)}Z`;
 const fmtZ = d => `${MON[d.getUTCMonth()]} ${String(d.getUTCDate()).padStart(2,'0')} ${d.toISOString().slice(11,13)}${d.toISOString().slice(14,16)}Z`;
 const hhmmZ = d => d.toISOString().slice(11,13) + d.toISOString().slice(14,16) + 'Z';
 function fmtAt(d, zone, withDate = true){
@@ -331,7 +373,7 @@ function fetchAadc(arr, fresh){
 // Authoritative source for "is there a ground delay program". If the browser cannot read it (CORS / offline)
 // nasGdp stays null and the stricter AADC-field rule below is used instead.
 const NAS_TTL = 2 * 60 * 1000;
-let nasCache = { t: 0, p: null }, nasGdp = null, nasOk = false;
+let nasCache = { t: 0, p: null }, nasGdp = null, nasOk = false, nasErr = '';
 function loadNas(fresh){
   if(nasCache.p && !fresh && Date.now() - nasCache.t < NAS_TTL) return nasCache.p;
   const p = fetch('https://nasstatus.faa.gov/api/airport-status-information', { cache: 'no-store' })
@@ -340,19 +382,20 @@ function loadNas(fresh){
       const doc = new DOMParser().parseFromString(txt, 'text/xml');
       if(doc.getElementsByTagName('parsererror').length) throw new Error('unreadable XML');
       const set = new Set();
-      // Only <Ground_Delay> entries are GDPs (Ground Stops / closures / delays are separate lists).
-      for(const gd of doc.getElementsByTagName('Ground_Delay')){
-        const a = gd.getElementsByTagName('ARPT')[0];
-        if(a && a.textContent.trim()) set.add(toLid(a.textContent));
+      // Only the "Ground Delay Programs" section counts (closures, ground stops and other delays are separate sections).
+      for(const dt of doc.getElementsByTagName('Delay_type')){
+        const nm = (dt.getElementsByTagName('Name')[0] || {}).textContent || '';
+        if(!/ground delay/i.test(nm)) continue;
+        for(const a of dt.getElementsByTagName('ARPT')) if(a.textContent.trim()) set.add(toLid(a.textContent));
       }
-      nasGdp = set; nasOk = true; return set;
+      nasGdp = set; nasOk = true; nasErr = ''; return set;
     })
-    .catch(e => { nasGdp = null; nasOk = false; console.warn('NAS Status unavailable, using AADC field', e); return null; });
+    .catch(e => { nasGdp = null; nasOk = false; nasErr = /failed to fetch|networkerror|load failed/i.test(e.message || '') ? 'blocked by the browser (CORS) or offline' : (e.message || String(e)); console.warn('NAS Status unavailable, using AADC field', e); return null; });
   nasCache = { t: Date.now(), p };
   return p;
 }
 // A GDP is only ever claimed when the NAS Status list was actually read. If it can't be read, nothing is called a GDP.
-const isGdp = (apt, control) => !!(nasGdp && nasGdp.has(apt));
+const isGdp = (apt, control) => !!(nasGdp && nasGdp.has(toLid(apt)));
 
 const allFlights = j => (j.timeBuckets || []).flatMap(b => b.flights || []);
 
@@ -387,6 +430,12 @@ async function check(q, fresh){
   return res;
 }
 const depOf = r => r.dep || (r.res && r.res.origin) || '';
+// Controlled departure time (EDCT) of a flight: tagged C by the FAA, or the departure of a flight whose arrival slot (CTA) is controlled.
+function ctlOf(r){
+  const x = r && r.res; if(!x || !x.found || !x.etd) return null;
+  if(x.etdType === 'C' || isCta(x)) return { k: 'ETD', t: x.etd };
+  return null;
+}
 const isCta = res => !!(res && res.found && res.etaType === 'C' && res.etdType !== 'C');
 
 function timeRow(label, ms, type, zone, code, ci){
@@ -421,8 +470,8 @@ function renderDetail(q, res){
   const depZone = tzOf(res.origin), arrZone = tzOf(res.dest);
   let banner;
   if(res.cancelled) banner = '<div class="banner b-bad">Flight shows cancelled</div>';
-  else if(res.etdType === 'C') banner = `<div class="banner b-warn">EDCT issued: <span class="zt">${fmtZ(new Date(res.etd))}</span> <span style="font-weight:400">(${fmtAt(new Date(res.etd), depZone)})</span>${ci ? `<span class="chg" title="${esc(ci.title)}" style="background:#000;color:var(--warn)">${esc(ci.chip)}</span>` : ''}</div>`;
-  else if(isCta(res)) banner = `<div class="banner b-warn">Controlled by ATC program: arrival slot (CTA) <span class="zt">${fmtZ(new Date(res.eta))}</span><br><span style="font-weight:400">EDCT issued but not published by the FAA (airline receives it via CDM). Departure below is the airline's own estimate.</span></div>`;
+  else if(res.etdType === 'C' || isCta(res)) banner = `<div class="banner b-warn">EDCT issued: <span class="zt">${fmtZ(new Date(res.etd))}</span> <span style="font-weight:400">(${fmtAt(new Date(res.etd), depZone)})</span>${ci ? `<span class="chg" title="${esc(ci.title)}" style="background:#000;color:var(--warn)">${esc(ci.chip)}</span>` : ''}${isCta(res) ? `<br><span style="font-weight:400">Arrival slot (CTA) <span class="zt">${fmtZ(new Date(res.eta))}</span></span>` : ''}</div>`;
+  else if(false) banner = `<div class="banner b-warn">Controlled by ATC program: arrival slot (CTA) <span class="zt">${fmtZ(new Date(res.eta))}</span><br><span style="font-weight:400">Departure time below (ETD <span class="zt">${fmtZ(new Date(res.etd))}</span>) is the controlled departure time.</span></div>`;
   else banner = '<div class="banner b-ok">No ATC control shown in FAA arrival demand data</div>';
   out.innerHTML = `<div class="card">${close}${programBanner(res)}${banner}
     <table class="kv">
@@ -454,7 +503,7 @@ async function lookup(q, opts = {}){
     const prev = getRecent().find(x => sameQ(x, q));
     saveRecent(evaluateChange(prev, {callsign:q.callsign, dep:q.dep, arr:q.arr, res}));
     if(opts.show !== false) renderDetail(q, res);
-    const t = res.found ? (res.etdType === 'C' ? ` EDCT ${hhmmZ(new Date(res.etd))}` : isCta(res) ? ` CTA ${hhmmZ(new Date(res.eta))}` : '') : '';
+    const t = res.found ? ((res.etdType === 'C' || isCta(res)) ? ` EDCT ${hhmmZ(new Date(res.etd))}` : '') : '';
     done(res.found, res.found ? `${q.callsign} ${res.origin}→${res.dest}${t}` : `${q.callsign} → ${q.arr}: not found (kept, re-checked every 10 min)`);
   }catch(e){
     done(false, `${q.callsign} → ${q.arr}: ${e.message}`);
@@ -514,7 +563,7 @@ function setSort(m){ sortMode = m; $('sort').value = m; try{ localStorage.setIte
 function displayed(){
   const list = getRecent();
   if(sortMode === 'manual') return list;
-  const isEdct = r => !!(r.res && r.res.found && r.res.etdType === 'C' && r.res.etd);
+  const isEdct = r => !!ctlOf(r);
   const hasEtd = r => !!(r.res && r.res.found && r.res.etd);
   const dir = sortMode === 'edct-late' ? -1 : 1;
   // Tier 0 = has EDCT, tier 1 = filed but no EDCT, tier 2 = not found / error.
@@ -586,15 +635,74 @@ function statusPill(r){
   if(!res) return '<span class="pill p-none">—</span>';
   if(!res.found) return '<span class="pill p-miss">Not found</span>';
   if(res.cancelled) return '<span class="pill p-miss">Cancelled</span>';
-  if(res.etdType === 'C') return '<span class="pill p-edct">EDCT</span>';
-  if(isCta(res)) return '<span class="pill p-cta" title="Arrival slot assigned by an ATC program; EDCT not published by FAA">CTA · EDCT not public</span>';
+  if(res.etdType === 'C' || isCta(res)) return '<span class="pill p-edct">EDCT</span>';
+  if(false) return '<span class="pill p-cta" title="Arrival is controlled by an ATC program (CTA). The FAA feed tags the arrival, not the departure, as controlled; the departure time shown is the controlled time.">CTA</span>';
   return `<span class="pill p-none">${esc(res.etdType)} · ${esc(PREFIX[res.etdType]?.split(' ')[0] || '?')}</span>`;
 }
 
+// Instant (ms UTC) of the p-time, fixed when it was entered (closest HHMM to that moment).
+const pInst = r => {
+  if(!r.ptime) return null;
+  const c = ctlOf(r), ref = c ? c.t : ((r.res && r.res.etd) || Date.now());   // the flight's own date, not the computer's
+  let p = r.pAt != null ? r.pAt : null;
+  if(p == null || Math.abs(ref - p) > 18 * 3600000) p = ptimeMs(r.ptime, ref);
+  return p;
+};
+function relExpired(r){
+  const p = pInst(r); if(p == null) return false;
+  const x = r.res; if(x && (x.cancelled || x.etdType === 'A')) return false;   // departed / cancelled: nothing to release
+  return Date.now() >= p + (RELEASE_MIN - nSet.pLead) * 60000;
+}
+const RELEASE_MIN = 120;   // a release is good for 2 hours after the p-time
+const relDue = r => { const p = pInst(r); return p == null ? null : p + (RELEASE_MIN - nSet.pLead) * 60000; };   // when to warn
+let lastRelSig = '';
+function checkRelease(){
+  const list = getRecent(); let changed = false;
+  const next = list.map(r => {
+    const exp = relExpired(r);
+    if(exp && !r.pNotified){
+      changed = true;
+      if(nSet.pOn) alertUser(`RELEASE EXPIRING - ${r.callsign} ${depOf(r)}→${r.arr}`, `Expires ${fmtHM(new Date(pInst(r) + RELEASE_MIN * 60000))} (p-time ${fmtHM(new Date(pInst(r)))})`, 'rel-' + keyOf(r), 'info');
+      return {...r, pNotified: true};
+    }
+    if(!exp && r.pNotified){ changed = true; return {...r, pNotified: false}; }
+    return r;
+  });
+  const sig = next.filter(relExpired).map(keyOf).join('|');
+  if(changed){ lastRelSig = sig; putRecent(next); }
+  else if(sig !== lastRelSig){ lastRelSig = sig; drawRecent(); }
+}
+setInterval(checkRelease, 15000);
+function ptimeBox(r, k){
+  let tag = '';
+  const cur = ctlOf(r), pm = cur ? pInst(r) : null;
+  if(pm != null && !(r.res && r.res.etdType === 'A')){
+    const d = cur.t - pm;
+    tag = Math.abs(d) < 60000 ? '<br><span class="pdelta">EDCT = p-time</span>'
+      : `<br><span class="pdelta ${d > 0 ? 'pd-later' : 'pd-earlier'}" title="EDCT vs p-time">${d > 0 ? '▲ +' : '▼ −'}${fmtMin(d)}</span>`;
+  }
+  return `<div class="pt-wrap"><span class="pt-lbl">Release P-time</span><br><input class="pt-in" data-k="${k}" inputmode="numeric" maxlength="6" placeholder="HHMM" value="${esc(r.ptime || '')}" title="UTC, HHMM (the departure time the flight was sent with)" aria-label="Release P-time">${tag}</div>`;
+}
+function setPtime(k, val){
+  val = (val || '').trim();
+  const p = val ? parsePtime(val) : null;
+  const inp = [...document.querySelectorAll('.pt-in')].find(i => i.dataset.k === k);
+  if(val && !p){ if(inp){ inp.classList.add('bad'); inp.title = 'Use HHMM in UTC, e.g. 1430'; } return; }
+  putRecent(getRecent().map(r => {
+    if(keyOf(r) !== k) return r;
+    const {ptime, pAt, pNotified, ...rest} = r;
+    const c = ctlOf(r), ref = c ? c.t : ((r.res && r.res.etd) || Date.now());
+    return p ? {...rest, ptime: p.norm, pAt: ptimeMs(p.norm, ref)} : rest;
+  }));
+  checkRelease();
+}
+let pendingDraw = false;
 function drawRecent(){
-  if(dragging) return;   // a refresh finishing mid-drag must not rebuild the rows
+  if(dragging) return;
+  const ae = document.activeElement;
+  if(ae && ae.classList && ae.classList.contains('pt-in')){ pendingDraw = true; return; }   // never rebuild rows while typing a p-time   // a refresh finishing mid-drag must not rebuild the rows
   const list = displayed();
-  const anyEdct = list.some(r => r.res && r.res.found && r.res.etdType === 'C');
+  const anyEdct = list.some(r => !!ctlOf(r));
   const showNote = sortMode !== 'manual' && list.length && !anyEdct;
   $('sortNote').classList.toggle('hidden', !showNote);
   $('sortNote').textContent = showNote ? 'No flight in the list has a published EDCT right now; sorted by departure time instead.' : '';
@@ -606,19 +714,24 @@ function drawRecent(){
     let dep = '<span class="small">—</span>';
     if(res && res.found && res.etd){
       const zt = `<span class="zt">${fmtZ(new Date(res.etd))}</span>`;
-      dep = `${ci ? `<mark class="chgt">${zt}</mark>` : zt}${res.etdType === 'C' ? ' <span class="small">EDCT</span>' : ''}${ci ? `<span class="chg" title="${esc(ci.title)}">${esc(ci.chip)}</span>` : ''}
+      dep = `${ci ? `<mark class="chgt">${zt}</mark>` : zt}${ci ? `<span class="chg" title="${esc(ci.title)}">${esc(ci.chip)}</span>` : ''}
         <br><span class="lt">${zone ? fmtAt(new Date(res.etd), zone) : 'local time zone unknown'}</span>
         ${isCta(res) ? `<br><span class="small">CTA ${hhmmZ(new Date(res.eta))} at ${esc(res.dest)}</span>` : ''}`;
     }
     const alias = res && res.found && res.acid && res.acid !== r.callsign ? `<br><span class="small">${esc(res.acid)}</span>` : '';
     const k = esc(keyOf(r));
-    return `<tr class="row" data-k="${k}"><td class="handle" title="Drag to reorder">⋮⋮</td><td><span class="cs">${esc(r.callsign)}</span>${alias}</td><td>${esc(d0 || '?')}→${esc(r.arr)}</td><td>${dep}</td>
+    return `<tr class="row" data-k="${k}"><td class="handle" title="Drag to reorder">⋮⋮</td><td><span class="cs${relExpired(r) ? ' rel-exp' : ''}"${relExpired(r) ? ' title="Release expires ' + fmtHM(new Date(pInst(r) + RELEASE_MIN * 60000)) + ' (2 h after the p-time)"' : ''}>${esc(r.callsign)}</span>${alias}<br>${ptimeBox(r, k)}</td><td>${esc(d0 || '?')}→${esc(r.arr)}</td><td>${dep}</td>
       <td class="hide-sm">${statusPill(r)}</td><td><button class="x" data-del="1" title="Remove">×</button></td></tr>`;
   }).join('');
+  $('recent').querySelectorAll('.pt-in').forEach(inp => {
+    inp.onchange = () => { const v = inp.value, k = inp.dataset.k; inp.blur(); setPtime(k, v); };
+    inp.onkeydown = e => { if(e.key === 'Enter') inp.blur(); };
+    inp.onblur = () => { if(pendingDraw){ pendingDraw = false; drawRecent(); } };
+  });
   $('recent').querySelectorAll('tr.row').forEach(tr => {
     tr.querySelector('.handle').addEventListener('pointerdown', e => startDrag(e, tr));
     tr.onclick = e => {
-      if(e.target.closest('.handle')) return;
+      if(e.target.closest('.handle') || e.target.closest('.pt-wrap')) return;
       if(e.target.closest('.chg')){ acknowledge(tr.dataset.k); return; }
       if(e.target.dataset.del !== undefined){ removeRecent(tr.dataset.k); return; }
       const r = getRecent().find(x => keyOf(x) === tr.dataset.k);
@@ -639,18 +752,11 @@ function updateStatus(){
 
 // ---- EDCT change notifications ----
 // Each saved flight keeps `base`: the EDCT (ms UTC) last alerted on, or null when none.
-let nSet = { thresh: 15, issued: true };
+let nSet = { enabled: true, thresh: 15, issued: true, pOn: true, pLead: 15 };
 try{ nSet = {...nSet, ...JSON.parse(localStorage.getItem('edct_notify') || '{}')}; }catch{}
 const saveNSet = () => { try{ localStorage.setItem('edct_notify', JSON.stringify(nSet)); }catch{} };
 const notifySupported = 'Notification' in window;
-// What the FAA is controlling the flight with: a published EDCT, or (when EDCTs are private) the CTA arrival slot.
-const ctlOf = r => {
-  const x = r && r.res; if(!x || !x.found) return null;
-  if(x.etdType === 'C' && x.etd) return { k: 'EDCT', t: x.etd };
-  if(isCta(x) && x.eta) return { k: 'CTA', t: x.eta };
-  return null;
-};
-const edctOf = r => (r && r.res && r.res.found && r.res.etdType === 'C' && r.res.etd) ? r.res.etd : null;
+const edctOf = r => { const c = ctlOf(r); return c ? c.t : null; };
 
 function nStateText(){
   if(!notifySupported) return 'This browser has no notification support; alerts show on this page only.';
@@ -662,16 +768,22 @@ function drawNotifyUi(){
   $('nState').textContent = nStateText();
   $('nEnable').classList.toggle('hidden', !notifySupported || Notification.permission === 'granted');
   $('nThresh').value = nSet.thresh; $('nIssued').checked = nSet.issued;
+  $('nOn').checked = nSet.enabled; $('pOn').checked = nSet.pOn; $('pLead').value = nSet.pLead;
+  if(!nSet.enabled) $('nState').textContent = 'Alerts are switched off (no pop-ups or banners until you turn them back on).';
 }
 $('nEnable').onclick = async () => { try{ await Notification.requestPermission(); }catch{} drawNotifyUi(); };
 $('nThresh').onchange = e => { const v = Math.round(+e.target.value); if(v >= 1 && v <= 240){ nSet.thresh = v; saveNSet(); } drawNotifyUi(); };
 $('nIssued').onchange = e => { nSet.issued = e.target.checked; saveNSet(); };
+$('nOn').onchange = e => { nSet.enabled = e.target.checked; saveNSet(); drawNotifyUi(); };
+$('pOn').onchange = e => { nSet.pOn = e.target.checked; saveNSet(); };
+$('pLead').onchange = e => { const v = Math.round(+e.target.value); if(v >= 0 && v <= 60){ nSet.pLead = v; saveNSet(); } drawNotifyUi(); checkRelease(); };
 
 let unseen = 0;
 const baseTitle = () => `EDCT Flight Lookup v${APP_VERSION}`;
 document.addEventListener('visibilitychange', () => { if(!document.hidden){ unseen = 0; document.title = baseTitle(); } });
 
-function alertUser(title, body, tag){
+function alertUser(title, body, tag, kind, force){
+  if(!nSet.enabled && !force) return;
   let sys = 'not permitted';
   if(notifySupported && Notification.permission === 'granted'){
     try{
@@ -682,11 +794,11 @@ function alertUser(title, body, tag){
   }
   alertUser.last = sys;
   const div = document.createElement('div');
-  div.className = 'alert';
+  div.className = 'alert' + (kind ? ' alert-' + kind : '');
   div.innerHTML = `<span>${esc(title)}<br><span style="font-weight:400">${esc(body)}</span></span><button title="Dismiss">×</button>`;
   div.querySelector('button').onclick = () => div.remove();
   $('alerts').prepend(div);
-  if(document.hidden){ unseen++; document.title = `(${unseen}) EDCT change — ${baseTitle()}`; }
+  if(document.hidden){ unseen++; document.title = `(${unseen}) ETD change — ${baseTitle()}`; }
 }
 
 const fmtMin = ms => { const m = Math.round(Math.abs(ms) / 60000); return m >= 60 ? `${Math.floor(m/60)} h ${m%60} min` : `${m} min`; };
@@ -697,46 +809,63 @@ function describe(r, ms){
 
 function evaluateAlert(prev, next){
   const cur = ctlOf(next);
-  if(!prev) return {...next, base: cur ? cur.t : null, baseK: cur ? cur.k : null};   // just added: no alert
-  // Reference = what we last alerted on. Older saved entries only have a numeric EDCT `base`.
+  if(!prev) return {...next, base: cur ? cur.t : null, baseK: cur ? 'ETD' : null};   // just added: no alert
+  // Reference = the ETD we last alerted on. Older saved entries may hold an EDCT or a CTA time as `base`.
   let base = prev.base !== undefined ? prev.base : edctOf(prev);
   let baseK = prev.baseK !== undefined ? prev.baseK : (base != null ? 'EDCT' : null);
+  if(baseK === 'EDCT') baseK = 'ETD';
   const keep = {...next, base, baseK};
   if(next.err) return keep;
   const x = next.res;
-  // Flight missing from the feed, cancelled, or already departed: that is not an EDCT being removed. Say nothing.
+  // Missing from the feed, cancelled, or departed: not an alert.
   if(!x || !x.found || x.cancelled) return keep;
   if(x.etdType === 'A') return {...next, base: null, baseK: null};
   const label = `${next.callsign} ${depOf(next)}→${next.arr}`;
   const tag = 'edct-' + keyOf(next);
-  const zone = k => k === 'CTA' ? tzOf(next.arr) : tzOf(depOf(next));
-  const desc = (k, ms) => { const z = zone(k), d = new Date(ms), at = k === 'CTA' ? next.arr : depOf(next);
-    return `${k} ${fmtZ(d)}${z ? ` (${fmtAt(d, z, false)} at ${at})` : ''}`; };
+  const hm = ms => fmtHM(new Date(ms));
   if(base == null && cur){
-    if(nSet.issued) alertUser(`${cur.k === 'CTA' ? 'CTA slot assigned' : 'EDCT issued'} — ${label}`, desc(cur.k, cur.t), tag);
-    return {...next, base: cur.t, baseK: cur.k};
+    if(nSet.issued) alertUser(`ETD assigned - ${label}`, `ETD ${hm(cur.t)}`, tag, 'info');
+    return {...next, base: cur.t, baseK: 'ETD'};
   }
   if(base != null && !cur){
-    if(nSet.issued) alertUser(`${baseK || 'EDCT'} removed — ${label}`, `No ${baseK || 'EDCT'} in the latest FAA data (was ${desc(baseK || 'EDCT', base)}). Check with ATC/dispatch.`, tag);
+    if(nSet.issued) alertUser(`ETD control removed - ${label}`, `Was ${hm(base)}`, tag, 'info');
     return {...next, base: null, baseK: null};
   }
   if(base != null && cur){
-    if(baseK !== cur.k){   // EDCT became public (or vice versa): re-baseline quietly
-      return {...next, base: cur.t, baseK: cur.k};
-    }
+    if(baseK !== 'ETD'){ return {...next, base: cur.t, baseK: 'ETD'}; }   // legacy CTA baseline: re-baseline quietly
     const delta = cur.t - base;
     if(Math.abs(delta) >= nSet.thresh * 60000){
-      alertUser(`${cur.k} ${delta > 0 ? 'LATER' : 'EARLIER'} by ${fmtMin(delta)} — ${label}`,
-        `New ${desc(cur.k, cur.t)}. Was ${desc(cur.k, base)}.`, tag);
-      return {...next, base: cur.t, baseK: cur.k};
+      alertUser(`ETD ${delta > 0 ? 'LATER' : 'EARLIER'} by ${fmtMin(delta)} - ${label}`,
+        `New ETD ${hm(cur.t)}, was ${hm(base)}`, tag, delta > 0 ? 'later' : 'earlier');
+      return {...next, base: cur.t, baseK: 'ETD'};
     }
     return keep;
   }
   return {...next, base: null, baseK: null};
 }
 // `ack` = the EDCT the user acknowledged (clicked the yellow tag) or first saw.
+// p-time: "HHMM" UTC typed by the user -> the UTC instant closest to `refMs` (the flight's current departure time).
+function parsePtime(str){
+  const m = /^\s*(\d{1,2}):?(\d{2})\s*z?\s*$/i.exec(str || ''); if(!m) return null;
+  const h = +m[1], mi = +m[2]; return (h > 23 || mi > 59) ? null : { h, mi, norm: String(h).padStart(2,'0') + String(mi).padStart(2,'0') };
+}
+function ptimeMs(ptime, refMs){
+  const p = parsePtime(ptime); if(!p) return null;
+  const r = new Date(refMs); let best = null;
+  for(const dd of [-1, 0, 1]){
+    const t = Date.UTC(r.getUTCFullYear(), r.getUTCMonth(), r.getUTCDate() + dd, p.h, p.mi);
+    if(best == null || Math.abs(t - refMs) < Math.abs(best - refMs)) best = t;
+  }
+  return best;
+}
+// A refresh replaces the flight entry; carry the user's p-time fields over to the new one.
+function evaluatePtime(prev, out){
+  const merged = {...out}, src = prev || out;
+  for(const f of ['ptime', 'pAt', 'pNotified']){ if(src[f] !== undefined) merged[f] = src[f]; else delete merged[f]; }
+  return merged;
+}
 function evaluateChange(prev, next){
-  const out = evaluateAlert(prev, next);
+  const out = evaluatePtime(prev, evaluateAlert(prev, next));
   const ack = prev && prev.ack !== undefined ? prev.ack : edctOf(prev);
   const now = edctOf(out);
   if(out.err) return {...out, ack};
@@ -757,8 +886,34 @@ function acknowledge(k){
   const r = getRecent().find(x => keyOf(x) === k);
   if(r && r.res && $('out').dataset.k === k) renderDetail(r, r.res);
 }
+(function(){
+  const el = $('utcClock'), DAY = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], z = n => String(n).padStart(2, '0');
+  const tick = () => { const d = new Date(); el.textContent = `${DAY[d.getUTCDay()]} ${z(d.getUTCDate())} ${MON[d.getUTCMonth()]} ${z(d.getUTCHours())}:${z(d.getUTCMinutes())}:${z(d.getUTCSeconds())}Z`; };
+  tick(); setInterval(tick, 1000);
+})();
+let nTestFlip = false;
+(function(){
+  // Main build: <site>/EDCT-Checker/   Beta build: <site>/EDCT-Checker/beta/
+  const b = $('betaSwitch'), path = location.pathname;
+  const onBeta = /\/beta(\/|$)/i.test(path);
+  b.textContent = onBeta ? '⇄ Switch to main' : '⇄ Switch to beta';
+  if(location.protocol === 'file:'){ b.disabled = true; b.title = 'Only works when the page is hosted'; }
+  b.onclick = () => {
+    const u = new URL(location.href);
+    if(onBeta){
+      u.pathname = path.replace(/\/beta(\/|$)/i, '/');            // /EDCT-Checker/beta -> /EDCT-Checker/
+    }else{
+      const m = path.match(/^(.*?\/EDCT-Checker)(\/.*)?$/i);
+      u.pathname = m ? m[1] + '/beta/' + (m[2] || '').replace(/^\//, '')   // /EDCT-Checker[/x] -> /EDCT-Checker/beta/[x]
+                     : path.replace(/[^/]*$/, '') + 'beta/';
+    }
+    location.href = u.toString();
+  };
+})();
 $('nTest').onclick = () => {
-  alertUser('Test — EDCT LATER by 25 min — TEST123 DTW→EWR', 'This is what an EDCT change alert looks like.', 'edct-test');
+  const later = !(nTestFlip = !nTestFlip);
+  alertUser(later ? 'ETD LATER by 25 min - TEST123 DTW→EWR' : 'ETD EARLIER by 30 min - TEST123 DTW→EWR',
+    later ? 'New ETD 1425Z, was 1400Z' : 'New ETD 1330Z, was 1400Z', 'edct-test', later ? 'later' : 'earlier', true);
   $('nState').textContent = nStateText() + ' Test: system notification ' + alertUser.last + '.';
 };
 drawNotifyUi();
@@ -840,8 +995,19 @@ $('qsIntl').checked = showIntl;
 $('qsIntl').onchange = e => { showIntl = e.target.checked; try{ localStorage.setItem('edct_qs_intl', showIntl ? '1' : '0'); }catch{} drawQsFlights(); };
 
 let qs = { airports: [], scanned: 0, scanning: false };
-async function scanPrograms(){
+const SCAN_KEY = 'edct_scan', SCAN_TTL = 10 * 60 * 1000;
+async function scanPrograms(force){
   if(qs.scanning) return;
+  if(!force){   // reuse a recent scan instead of hitting ~every AADC airport on each page load
+    try{
+      const c = JSON.parse(localStorage.getItem(SCAN_KEY) || 'null');
+      if(c && Date.now() - c.t < SCAN_TTL && Array.isArray(c.airports)){
+        qs.airports = c.airports; qs.scanned = c.t; drawQsAirports();
+        $('qsState').textContent = `Using the scan from ${Math.max(0, Math.round((Date.now() - c.t) / 60000))} min ago (press ↻ to rescan)` + (c.nasOk ? '' : ` · NAS Status not readable (${c.nasErr || 'unknown'}); "possible" airports are unverified`);
+        return;
+      }
+    }catch{}
+  }
   qs.scanning = true; $('qsScan').disabled = true;
   $('qsState').textContent = 'Scanning FAA AADC airports…';
   try{
@@ -856,16 +1022,20 @@ async function scanPrograms(){
         const fl = allFlights(j);
         const ctl = fl.filter(f => f.eta && f.eta[0] === 'C').length;
         const gdp = isGdp(a, j.control);
-        if(gdp || ctl >= 5) found.push({ apt: a, control: j.control, gdp, ctl });
+        const maybe = !nasOk && !gdp && !!j.control && !/^\s*(no gdp|none|no program|n\/a)?\s*$/i.test(j.control);
+        if(gdp || maybe || ctl >= 5) found.push({ apt: a, control: j.control, gdp, maybe, ctl });
         else delete aadcCache[a];   // do not keep data we will not use
       }catch{ n++; }
     }};
-    await Promise.all(Array.from({length: 8}, worker));
-    found.sort((x, y) => (y.gdp - x.gdp) || (y.ctl - x.ctl));
+    await Promise.all(Array.from({length: 4}, worker));
+    found.sort((x, y) => (y.gdp - x.gdp) || (y.maybe - x.maybe) || (y.ctl - x.ctl));
     qs.airports = found; qs.scanned = Date.now();
+    try{ localStorage.setItem(SCAN_KEY, JSON.stringify({ t: qs.scanned, airports: found, nasOk, nasErr })); }catch{}
     drawQsAirports();
     const nG = found.filter(x => x.gdp).length;
-    $('qsState').textContent = (nasOk ? `${nG} airport${nG === 1 ? '' : 's'} with a ground delay program (per FAA NAS Status)` : 'FAA NAS Status not readable from this page, so GDPs cannot be confirmed; airports below only have controlled arrivals') + ` · scanned ${new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+    const nM = found.filter(x => x.maybe).length;
+    $('qsState').textContent = (nasOk ? `${nG} airport${nG === 1 ? '' : 's'} with a ground delay program (per FAA NAS Status)`
+      : `NAS Status not readable (${nasErr}); GDPs unconfirmed, ${nM} airport${nM === 1 ? '' : 's'} flagged "possible" from the AADC control field`) + ` · scanned ${new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
   }catch(e){
     $('qsState').textContent = 'Program scan failed: ' + e.message;
     $('qsApt').innerHTML = '<option value="">Scan failed — press ↻</option>';
@@ -874,11 +1044,12 @@ async function scanPrograms(){
   }
 }
 function drawQsAirports(){
-  const g = qs.airports.filter(x => x.gdp), o = qs.airports.filter(x => !x.gdp);
-  const opt = x => `<option value="${esc(x.apt)}">${esc(x.apt)} — ${x.gdp ? 'GDP' : 'controlled arrivals'} · ${x.ctl} controlled</option>`;
+  const g = qs.airports.filter(x => x.gdp), m = qs.airports.filter(x => !x.gdp && x.maybe), o = qs.airports.filter(x => !x.gdp && !x.maybe);
+  const opt = x => `<option value="${esc(x.apt)}">${esc(x.apt)} — ${x.gdp ? 'GDP' : x.maybe ? 'possible GDP' : 'controlled arrivals'} · ${x.ctl} controlled</option>`;
   const prev = $('qsApt').value;
   $('qsApt').innerHTML = `<option value="">${qs.airports.length ? 'Choose an airport…' : 'No active programs found'}</option>`
     + (g.length ? `<optgroup label="Ground Delay Program in effect">${g.map(opt).join('')}</optgroup>` : '')
+    + (m.length ? `<optgroup label="Possible GDP (unverified: NAS Status not readable)">${m.map(opt).join('')}</optgroup>` : '')
     + (o.length ? `<optgroup label="Controlled arrivals, no confirmed GDP">${o.map(opt).join('')}</optgroup>` : '');
   if(prev && qs.airports.some(x => x.apt === prev)) $('qsApt').value = prev;
   drawQsFlights();
@@ -916,7 +1087,32 @@ $('qsFlt').onchange = () => {
   lookup({ callsign: acid, dep: origin, arr: $('qsApt').value });
   $('qsFlt').value = '';
 };
-$('qsScan').onclick = scanPrograms;
+$('qsScan').onclick = () => scanPrograms(true);
+async function diagnose(){
+  const out = $('diagOut'), btn = $('diagBtn'); btn.disabled = true; out.textContent = 'Testing…';
+  const tests = [
+    ['AADC airport list', 'https://www.fly.faa.gov/aadc/api/airports'],
+    ['AADC airport EWR', 'https://www.fly.faa.gov/aadc/api/airports/EWR'],
+    ['NAS Status', 'https://nasstatus.faa.gov/api/airport-status-information']
+  ];
+  const lines = [`Page address: ${location.origin}${location.pathname} (${location.protocol})`, `Online per browser: ${navigator.onLine}`, ''];
+  for(const [name, url] of tests){
+    const t0 = performance.now(), ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 12000);
+    try{
+      const r = await fetch(url, { cache: 'no-store', signal: ctl.signal });
+      const body = await r.text();
+      lines.push(`${r.ok ? 'OK    ' : 'HTTP ' + r.status} ${name}: ${Math.round(performance.now() - t0)} ms, ${body.length} bytes`
+        + (r.ok ? '' : r.status === 403 || r.status === 429 ? '  → the FAA is refusing or rate limiting this connection' : ''));
+    }catch(e){
+      let why = 'could not tell';
+      try{ await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(8000) }); why = 'server reachable, but it is not letting this page read the response (CORS)'; }
+      catch{ why = 'server not reachable from this browser (offline, network/firewall block, or the FAA refusing the connection)'; }
+      lines.push(`FAIL   ${name}: ${e.name === 'AbortError' ? 'timed out after 12 s' : e.message} → ${why}`);
+    }finally{ clearTimeout(to); }
+  }
+  out.textContent = lines.join('\n'); btn.disabled = false;
+}
+$('diagBtn').onclick = diagnose;
 
 // ---- Start ----
 $('ver').textContent = 'v' + APP_VERSION;
@@ -925,6 +1121,7 @@ $('changelog').innerHTML = CHANGELOG.map(c => `<p style="margin:8px 0 2px"><b>v$
 document.title = baseTitle();
 setMode('flight');
 drawRecent();
+checkRelease();
 refreshAll().finally(() => setTimeout(scanPrograms, 500));
 $('airline').focus();
 </script>
