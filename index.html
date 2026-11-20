@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- Version: see APP_VERSION + CHANGELOG in the script. Bump on every revision (SemVer: MAJOR.MINOR.PATCH); file name is edct_lookup_v<version>.html. -->
-<meta name="app-version" content="1.9.0">
+<meta name="app-version" content="1.9.1">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EDCT Flight Lookup</title>
 <style>
@@ -179,10 +179,15 @@ const $ = id => document.getElementById(id);
 // MAJOR = breaking change (e.g. stored-data format). Save the file as edct_lookup_v<APP_VERSION>.html.
 // Add a CHANGELOG entry at the TOP and keep the <meta name="app-version"> tag in sync.
 // Bump STORAGE_SCHEMA only when the saved data format changes, and add a step to migrateStorage().
-const APP_VERSION = '1.9.0';
-const BUILD_DATE = '2026-11-06';
+const APP_VERSION = '1.9.1';
+const BUILD_DATE = '2026-11-15';
 const STORAGE_SCHEMA = 2;
 const CHANGELOG = [
+  { v: '1.9.1', date: '2026-11-15', notes: [
+    'Fixed false "ground delay program" labels: any AADC control text other than "No GDP" (e.g. "None") was treated as a GDP. GDPs are now taken from the FAA NAS Status page (nasstatus.faa.gov) when the browser can read it, otherwise only an AADC value of "Actual" counts.',
+    'Fixed notifications: CTA (arrival slot) changes now alert too (most GDP flights have no published EDCT, so nothing ever fired); a departed, cancelled or dropped-from-feed flight no longer triggers a false "EDCT removed" alert; one error can no longer stop auto refresh permanently.',
+    'If NAS Status cannot be read, no airport is labelled a GDP any more (AADC "Actual" was not a reliable GDP signal); such airports show as controlled arrivals only.',
+    'Test button now reports whether the system notification was actually delivered.' ] },
   { v: '1.9.0', date: '2026-11-06', notes: [
     'Quick select hides departures from airports outside the USA (incl. Alaska, Hawaii, Puerto Rico, USVI, Guam), Canada and Mexico.',
     'Checkbox "Show departures from other countries" re-enables them (remembered). The flight list shows how many were hidden.' ] },
@@ -322,6 +327,33 @@ function fetchAadc(arr, fresh){
   p.catch(() => { if(aadcCache[arr] && aadcCache[arr].p === p) delete aadcCache[arr]; });
   return p;
 }
+// ---- GDP list from the FAA NAS Status page (nasstatus.faa.gov) ----
+// Authoritative source for "is there a ground delay program". If the browser cannot read it (CORS / offline)
+// nasGdp stays null and the stricter AADC-field rule below is used instead.
+const NAS_TTL = 2 * 60 * 1000;
+let nasCache = { t: 0, p: null }, nasGdp = null, nasOk = false;
+function loadNas(fresh){
+  if(nasCache.p && !fresh && Date.now() - nasCache.t < NAS_TTL) return nasCache.p;
+  const p = fetch('https://nasstatus.faa.gov/api/airport-status-information', { cache: 'no-store' })
+    .then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+    .then(txt => {
+      const doc = new DOMParser().parseFromString(txt, 'text/xml');
+      if(doc.getElementsByTagName('parsererror').length) throw new Error('unreadable XML');
+      const set = new Set();
+      // Only <Ground_Delay> entries are GDPs (Ground Stops / closures / delays are separate lists).
+      for(const gd of doc.getElementsByTagName('Ground_Delay')){
+        const a = gd.getElementsByTagName('ARPT')[0];
+        if(a && a.textContent.trim()) set.add(toLid(a.textContent));
+      }
+      nasGdp = set; nasOk = true; return set;
+    })
+    .catch(e => { nasGdp = null; nasOk = false; console.warn('NAS Status unavailable, using AADC field', e); return null; });
+  nasCache = { t: Date.now(), p };
+  return p;
+}
+// A GDP is only ever claimed when the NAS Status list was actually read. If it can't be read, nothing is called a GDP.
+const isGdp = (apt, control) => !!(nasGdp && nasGdp.has(apt));
+
 const allFlights = j => (j.timeBuckets || []).flatMap(b => b.flights || []);
 
 // Find the flight. Departure is optional: without it, prefer the next flight that has not arrived.
@@ -339,10 +371,10 @@ function findFlight(j, callsign, dep){
 
 // Returns a plain, storable result object.
 async function check(q, fresh){
-  const j = await fetchAadc(q.arr, fresh);
+  const [j] = await Promise.all([fetchAadc(q.arr, fresh), loadNas(fresh)]);
   const ref = new Date(Date.UTC(+j.year, +j.month - 1, +j.day));
   const hit = findFlight(j, q.callsign, q.dep);
-  const res = { checked: Date.now(), program: j.control || 'Unknown', aptName: j.name, dataStamp: j.dateTime, found: !!hit };
+  const res = { checked: Date.now(), program: j.control || 'Unknown', gdp: isGdp(q.arr, j.control), gdpSrc: nasOk ? 'nas' : 'aadc', aptName: j.name, dataStamp: j.dateTime, found: !!hit };
   if(hit){
     const etd = parseTfms(hit.etd, ref), eta = parseTfms(hit.eta, ref);
     Object.assign(res, {
@@ -369,10 +401,10 @@ function timeRow(label, ms, type, zone, code, ci){
 }
 
 function programBanner(res){
-  const p = res.program || '';
-  if(/no gdp/i.test(p)) return `<div class="small" style="margin-bottom:8px">No ground delay program at ${esc(res.aptName)}.</div>`;
-  if(/actual/i.test(p)) return `<div class="banner b-warn">Ground Delay Program in effect at ${esc(res.aptName)}</div>`;
-  return `<div class="banner b-warn">Program at ${esc(res.aptName)}: ${esc(p)}</div>`;
+  const src = res.gdpSrc === 'nas' ? 'FAA NAS Status' : 'FAA AADC';
+  if(res.gdp) return `<div class="banner b-warn" title="Source: ${src}">Ground Delay Program in effect at ${esc(res.aptName)}</div>`;
+  if(res.gdpSrc !== 'nas') return `<div class="small" style="margin-bottom:8px">GDP status for ${esc(res.aptName)} could not be verified (FAA NAS Status not readable from this page; AADC control field: ${esc(res.program || '—')}).</div>`;
+  return `<div class="small" style="margin-bottom:8px">No ground delay program published at ${esc(res.aptName)}.</div>`;
 }
 
 function renderDetail(q, res){
@@ -611,6 +643,13 @@ let nSet = { thresh: 15, issued: true };
 try{ nSet = {...nSet, ...JSON.parse(localStorage.getItem('edct_notify') || '{}')}; }catch{}
 const saveNSet = () => { try{ localStorage.setItem('edct_notify', JSON.stringify(nSet)); }catch{} };
 const notifySupported = 'Notification' in window;
+// What the FAA is controlling the flight with: a published EDCT, or (when EDCTs are private) the CTA arrival slot.
+const ctlOf = r => {
+  const x = r && r.res; if(!x || !x.found) return null;
+  if(x.etdType === 'C' && x.etd) return { k: 'EDCT', t: x.etd };
+  if(isCta(x) && x.eta) return { k: 'CTA', t: x.eta };
+  return null;
+};
 const edctOf = r => (r && r.res && r.res.found && r.res.etdType === 'C' && r.res.etd) ? r.res.etd : null;
 
 function nStateText(){
@@ -633,12 +672,15 @@ const baseTitle = () => `EDCT Flight Lookup v${APP_VERSION}`;
 document.addEventListener('visibilitychange', () => { if(!document.hidden){ unseen = 0; document.title = baseTitle(); } });
 
 function alertUser(title, body, tag){
+  let sys = 'not permitted';
   if(notifySupported && Notification.permission === 'granted'){
     try{
       const n = new Notification(title, { body, tag, renotify: true, requireInteraction: true });
       n.onclick = () => { window.focus(); n.close(); };
-    }catch(e){ console.warn('Notification failed', e); }
+      sys = 'sent';
+    }catch(e){ console.warn('Notification failed', e); sys = 'failed: ' + (e.message || e.name) + (/illegal constructor/i.test(e.message || '') ? ' (this browser only allows notifications from a service worker, e.g. Android Chrome)' : ''); }
   }
+  alertUser.last = sys;
   const div = document.createElement('div');
   div.className = 'alert';
   div.innerHTML = `<span>${esc(title)}<br><span style="font-weight:400">${esc(body)}</span></span><button title="Dismiss">×</button>`;
@@ -654,30 +696,43 @@ function describe(r, ms){
 }
 
 function evaluateAlert(prev, next){
-  if(!prev) return {...next, base: edctOf(next)};   // just added: no alert
-  const base = prev.base !== undefined ? prev.base : edctOf(prev);
-  const now = edctOf(next);
+  const cur = ctlOf(next);
+  if(!prev) return {...next, base: cur ? cur.t : null, baseK: cur ? cur.k : null};   // just added: no alert
+  // Reference = what we last alerted on. Older saved entries only have a numeric EDCT `base`.
+  let base = prev.base !== undefined ? prev.base : edctOf(prev);
+  let baseK = prev.baseK !== undefined ? prev.baseK : (base != null ? 'EDCT' : null);
+  const keep = {...next, base, baseK};
+  if(next.err) return keep;
+  const x = next.res;
+  // Flight missing from the feed, cancelled, or already departed: that is not an EDCT being removed. Say nothing.
+  if(!x || !x.found || x.cancelled) return keep;
+  if(x.etdType === 'A') return {...next, base: null, baseK: null};
   const label = `${next.callsign} ${depOf(next)}→${next.arr}`;
   const tag = 'edct-' + keyOf(next);
-  if(next.err) return {...next, base};
-  if(base == null && now != null){
-    if(nSet.issued) alertUser(`EDCT issued — ${label}`, `EDCT ${describe(next, now)}`, tag);
-    return {...next, base: now};
+  const zone = k => k === 'CTA' ? tzOf(next.arr) : tzOf(depOf(next));
+  const desc = (k, ms) => { const z = zone(k), d = new Date(ms), at = k === 'CTA' ? next.arr : depOf(next);
+    return `${k} ${fmtZ(d)}${z ? ` (${fmtAt(d, z, false)} at ${at})` : ''}`; };
+  if(base == null && cur){
+    if(nSet.issued) alertUser(`${cur.k === 'CTA' ? 'CTA slot assigned' : 'EDCT issued'} — ${label}`, desc(cur.k, cur.t), tag);
+    return {...next, base: cur.t, baseK: cur.k};
   }
-  if(base != null && now == null){
-    if(nSet.issued) alertUser(`EDCT removed — ${label}`, `No EDCT in latest FAA data (was ${describe(next, base)}). Check with ATC/dispatch.`, tag);
-    return {...next, base: null};
+  if(base != null && !cur){
+    if(nSet.issued) alertUser(`${baseK || 'EDCT'} removed — ${label}`, `No ${baseK || 'EDCT'} in the latest FAA data (was ${desc(baseK || 'EDCT', base)}). Check with ATC/dispatch.`, tag);
+    return {...next, base: null, baseK: null};
   }
-  if(base != null && now != null){
-    const delta = now - base;
-    if(Math.abs(delta) >= nSet.thresh * 60000){
-      alertUser(`EDCT ${delta > 0 ? 'LATER' : 'EARLIER'} by ${fmtMin(delta)} — ${label}`,
-        `New EDCT ${describe(next, now)}. Was ${describe(next, base)}.`, tag);
-      return {...next, base: now};
+  if(base != null && cur){
+    if(baseK !== cur.k){   // EDCT became public (or vice versa): re-baseline quietly
+      return {...next, base: cur.t, baseK: cur.k};
     }
-    return {...next, base};
+    const delta = cur.t - base;
+    if(Math.abs(delta) >= nSet.thresh * 60000){
+      alertUser(`${cur.k} ${delta > 0 ? 'LATER' : 'EARLIER'} by ${fmtMin(delta)} — ${label}`,
+        `New ${desc(cur.k, cur.t)}. Was ${desc(cur.k, base)}.`, tag);
+      return {...next, base: cur.t, baseK: cur.k};
+    }
+    return keep;
   }
-  return {...next, base: null};
+  return {...next, base: null, baseK: null};
 }
 // `ack` = the EDCT the user acknowledged (clicked the yellow tag) or first saw.
 function evaluateChange(prev, next){
@@ -702,23 +757,30 @@ function acknowledge(k){
   const r = getRecent().find(x => keyOf(x) === k);
   if(r && r.res && $('out').dataset.k === k) renderDetail(r, r.res);
 }
-$('nTest').onclick = () => alertUser('Test — EDCT LATER by 25 min — TEST123 DTW→EWR', 'This is what an EDCT change alert looks like.', 'edct-test');
+$('nTest').onclick = () => {
+  alertUser('Test — EDCT LATER by 25 min — TEST123 DTW→EWR', 'This is what an EDCT change alert looks like.', 'edct-test');
+  $('nState').textContent = nStateText() + ' Test: system notification ' + alertUser.last + '.';
+};
 drawNotifyUi();
 
 async function refreshAll(){
   const list = getRecent();
   if(refreshing || !list.length) return;
   refreshing = true; $('refresh').disabled = true; updateStatus();
-  const fetched = new Set();   // force one fresh request per arrival airport this cycle
-  const updated = await Promise.all(list.map(async r => {
-    const fresh = !fetched.has(r.arr); fetched.add(r.arr);
-    try{ const res = await check(r, fresh); return {callsign:r.callsign, dep:r.dep, arr:r.arr, res}; }
-    catch(e){ const {err, ...rest} = r; return {...rest, err: e.message}; }
-  }));
-  const current = getRecent();
-  putRecent(current.map(c => { const u = updated.find(x => sameQ(x, c)); return u ? evaluateChange(c, u) : c; }));
-  lastRefresh = Date.now();
-  refreshing = false; $('refresh').disabled = false; updateStatus();
+  try{
+    const fetched = new Set();   // force one fresh request per arrival airport this cycle
+    const updated = await Promise.all(list.map(async r => {
+      const fresh = !fetched.has(r.arr); fetched.add(r.arr);
+      try{ const res = await check(r, fresh); return {callsign:r.callsign, dep:r.dep, arr:r.arr, res}; }
+      catch(e){ return {...r, err: e.message}; }
+    }));
+    const current = getRecent();
+    putRecent(current.map(c => {
+      const u = updated.find(x => sameQ(x, c)); if(!u) return c;
+      try{ return evaluateChange(c, u); }catch(e){ console.error('evaluateChange failed', e); return u; }
+    }));
+  }catch(e){ console.error('refreshAll failed', e); }
+  finally{ lastRefresh = Date.now(); refreshing = false; $('refresh').disabled = false; updateStatus(); }
 }
 $('refresh').onclick = refreshAll;
 $('sort').value = sortMode;
@@ -783,6 +845,7 @@ async function scanPrograms(){
   qs.scanning = true; $('qsScan').disabled = true;
   $('qsState').textContent = 'Scanning FAA AADC airports…';
   try{
+    await loadNas(true);
     const list = await fetch('https://www.fly.faa.gov/aadc/api/airports').then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
     const found = [], q = [...list]; let n = 0;
     const worker = async () => { while(q.length){
@@ -792,7 +855,7 @@ async function scanPrograms(){
         n++; $('qsState').textContent = `Scanning FAA AADC airports… ${n}/${list.length}`;
         const fl = allFlights(j);
         const ctl = fl.filter(f => f.eta && f.eta[0] === 'C').length;
-        const gdp = !/no gdp/i.test(j.control || 'No GDP');
+        const gdp = isGdp(a, j.control);
         if(gdp || ctl >= 5) found.push({ apt: a, control: j.control, gdp, ctl });
         else delete aadcCache[a];   // do not keep data we will not use
       }catch{ n++; }
@@ -802,7 +865,7 @@ async function scanPrograms(){
     qs.airports = found; qs.scanned = Date.now();
     drawQsAirports();
     const nG = found.filter(x => x.gdp).length;
-    $('qsState').textContent = `${nG} airport${nG === 1 ? '' : 's'} with a ground delay program · scanned ${new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+    $('qsState').textContent = (nasOk ? `${nG} airport${nG === 1 ? '' : 's'} with a ground delay program (per FAA NAS Status)` : 'FAA NAS Status not readable from this page, so GDPs cannot be confirmed; airports below only have controlled arrivals') + ` · scanned ${new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
   }catch(e){
     $('qsState').textContent = 'Program scan failed: ' + e.message;
     $('qsApt').innerHTML = '<option value="">Scan failed — press ↻</option>';
@@ -816,7 +879,7 @@ function drawQsAirports(){
   const prev = $('qsApt').value;
   $('qsApt').innerHTML = `<option value="">${qs.airports.length ? 'Choose an airport…' : 'No active programs found'}</option>`
     + (g.length ? `<optgroup label="Ground Delay Program in effect">${g.map(opt).join('')}</optgroup>` : '')
-    + (o.length ? `<optgroup label="Controlled arrivals, no GDP (likely AFP / other airport)">${o.map(opt).join('')}</optgroup>` : '');
+    + (o.length ? `<optgroup label="Controlled arrivals, no confirmed GDP">${o.map(opt).join('')}</optgroup>` : '');
   if(prev && qs.airports.some(x => x.apt === prev)) $('qsApt').value = prev;
   drawQsFlights();
 }
