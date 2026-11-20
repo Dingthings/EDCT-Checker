@@ -3,10 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- Version: see APP_VERSION + CHANGELOG in the script. Bump on every revision (SemVer: MAJOR.MINOR.PATCH); file name is edct_lookup_v<version>.html. -->
-<meta name="app-version" content="2.0.0">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap">
+<meta name="app-version" content="1.9.9">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EDCT Flight Lookup</title>
 <style>
@@ -15,12 +12,10 @@
 :root[data-theme="dark"]{--bg:#0d1218;--card:#161e28;--fg:#e7ecf2;--mut:#98a5b5;--line:#2a3644;--pri:#3d9bff;--pri-fg:#06121f;--hover:rgba(61,155,255,.10);color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-header{background:var(--pri);color:var(--pri-fg);padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-
+header{background:var(--pri);color:var(--pri-fg);padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;font-weight:700}
 header .sp{flex:1}
-header,header h1,#ver,#utcClock,#themeBtn,#betaSwitch{font-family:Roboto,"Segoe UI",system-ui,-apple-system,Arial,sans-serif}
-header h1,#ver,#utcClock,#themeBtn,#betaSwitch{display:inline-flex;align-items:center;height:30px;box-sizing:border-box;margin:0;padding:0 12px;border:1px solid currentColor;border-radius:16px;font-size:13px;font-weight:500;letter-spacing:0;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums}
-#themeBtn,#betaSwitch{background:transparent;color:inherit;cursor:pointer}
+#themeBtn,#betaSwitch{border:1px solid currentColor;background:transparent;color:inherit;border-radius:16px;padding:5px 12px;font-weight:600;cursor:pointer;font-size:13px}
 .layout{max-width:1320px;margin:0 auto;padding:16px;display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:16px;align-items:start}
 .col{min-width:0}
 @media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
@@ -95,10 +90,10 @@ mark.chgt{background:var(--warn);color:#000;padding:0 4px;border-radius:4px}
 </head>
 <body>
 <header>
-  <h1>Flight Lookup (EDCT)</h1><span id="ver"></span>
-  <span id="utcClock" title="Current UTC (Zulu) day and time"></span>
+  <h1>Flight Lookup (EDCT)</h1><span id="ver" style="font-size:12px;opacity:.85"></span>
+  <span id="utcClock" title="Current UTC (Zulu) day and time" style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;margin-left:4px"></span>
   <span class="sp"></span>
-  <button id="betaSwitch" type="button"></button>
+  <button id="betaSwitch" type="button" style="margin-right:6px"></button>
   <button id="themeBtn" type="button" title="Theme: Auto → Light → Dark">◐ Auto</button>
 </header>
 <div class="layout">
@@ -199,17 +194,41 @@ const $ = id => document.getElementById(id);
 // MAJOR = breaking change (e.g. stored-data format). Save the file as edct_lookup_v<APP_VERSION>.html.
 // Add a CHANGELOG entry at the TOP and keep the <meta name="app-version"> tag in sync.
 // Bump STORAGE_SCHEMA only when the saved data format changes, and add a step to migrateStorage().
-const APP_VERSION = '2.0.0';
-const BUILD_DATE = '2026-11-20';
+const APP_VERSION = '1.9.9';
+const BUILD_DATE = '2026-11-15';
 const STORAGE_SCHEMA = 2;
 const CHANGELOG = [
-  { v: '2.0.0', date: '2026-11-20', notes: [
-    'Alerts now follow the departure time (ETD) of flights the FAA is controlling, whether by a published EDCT or a CTA arrival slot. Windows are short (\"ETD EARLIER by 30 min - UAL1 ORD→EWR\" / \"New ETD 1400Z, was 1430Z\", no local time) and colour-coded: red = later, green = earlier. New switch to turn all alerts off; the Test button reports whether the system notification was delivered.',
-    'Fixed notifications: no more false \"removed\" alerts for flights that departed, were cancelled or dropped out of the feed, and one error can no longer stop auto refresh.',
-    'Status shows EDCT (blue) for CTA-controlled flights too, since the departure time shown has matched the real EDCT; the \"EDCT\" word beside the departure time is gone.',
-    'Ground delay programs are read from the FAA NAS Status feed. If it cannot be read, nothing is called a GDP; airports with a program in the AADC field are listed as \"possible GDP (unverified)\" and the scan says why. The scan is gentler on the FAA servers (4 parallel requests, result reused for 10 minutes). New Connection test at the bottom of the page.',
-    'New Release P-time box under each flight number (UTC, HHMM). It shows how long ago the p-time was versus the current Zulu time. A release lasts 2 hours: the flight number turns yellow and one alert fires N minutes before then (default 15, adjustable).',
-    'Header: live UTC day/time clock, Switch to beta / Switch to main button (/EDCT-Checker and /EDCT-Checker/beta), and title, version, clock and buttons restyled as matching Roboto pills.' ] },
+  { v: '1.9.9', date: '2026-11-20', notes: [
+    'Fixed absurd p-time differences (e.g. −3241 h): the p-time is now tied to the flight\'s own date (closest HHMM to its departure time) instead of the computer\'s date, and a stored p-time more than 18 h from the flight is re-anchored automatically.' ] },
+  { v: '1.9.8', date: '2026-11-20', notes: [
+    'EDCT status pill is now blue; removed the \"EDCT\" word next to the departure time.',
+    'Release expiry is now fixed at 2 hours after the p-time; the setting is how many minutes BEFORE that to warn (default 15). The flight number turns yellow and the alert fires at that point.',
+    'Flight column width back to the old layout: the Release P-time box no longer widens the column.' ] },
+  { v: '1.9.7', date: '2026-11-20', notes: [
+    'Added a Connection test (bottom of page) that checks each FAA endpoint and says whether it is unreachable, refusing the page (CORS) or returning an HTTP error.',
+    'Program scan is gentler on the FAA servers: 4 parallel requests instead of 8, and the result is reused for 10 minutes across page reloads (press the refresh arrow to force a new scan).' ] },
+  { v: '1.9.6', date: '2026-11-20', notes: [
+    'Program scan: when the NAS Status page cannot be read, airports whose AADC control field shows a program are listed as \"possible GDP (unverified)\" instead of disappearing, and the scan status says why NAS Status could not be read.' ] },
+  { v: '1.9.5', date: '2026-11-20', notes: [
+    'P-time box renamed \"Release P-time\", made compact (flight list columns back to their old width) with the EDCT-vs-p-time difference shown below it.',
+    'Release expiry: when the current UTC time is more than 2 hours (adjustable) past a flight\'s p-time, the flight number turns yellow and one alert is sent. Replaces the EDCT-vs-p-time alert.',
+    'Added a live UTC day/time clock to the header.' ] },
+  { v: '1.9.4', date: '2026-11-20', notes: [
+    'Status now reads EDCT for CTA-controlled flights too (the departure time shown has matched the real EDCT); EDCT change tags, sorting and alerts treat them the same as published EDCTs.',
+    'Added an on/off switch for all alerts in Notifications.',
+    'Each flight row has a \"sent with p-time\" box (UTC, HHMM). New alert: when the EDCT is at least N minutes (default 120) later and/or earlier than the p-time.' ] },
+  { v: '1.9.3', date: '2026-11-20', notes: [
+    'Removed the \"EDCT not public\" wording: CTA-controlled flights are now labelled just \"CTA\", since the departure time shown is the controlled time.' ] },
+  { v: '1.9.2', date: '2026-11-20', notes: [
+    'Alerts now track and show the departure time (ETD) instead of the CTA arrival time.',
+    'Alert windows are shorter (\"ETD EARLIER by 30 min - UAL1 ORD→EWR\" / \"New ETD 1400Z, was 1430Z\", no local time) and colour-coded: red = later, green = earlier.',
+    'Added a Switch to beta / Switch to main button (main = /EDCT-Checker, beta = /EDCT-Checker/beta).',
+    'GDP list is now read from the Ground Delay Programs section of the NAS Status feed.' ] },
+  { v: '1.9.1', date: '2026-11-15', notes: [
+    'Fixed false "ground delay program" labels: any AADC control text other than "No GDP" (e.g. "None") was treated as a GDP. GDPs are now taken from the FAA NAS Status page (nasstatus.faa.gov) when the browser can read it, otherwise only an AADC value of "Actual" counts.',
+    'Fixed notifications: CTA (arrival slot) changes now alert too (most GDP flights have no published EDCT, so nothing ever fired); a departed, cancelled or dropped-from-feed flight no longer triggers a false "EDCT removed" alert; one error can no longer stop auto refresh permanently.',
+    'If NAS Status cannot be read, no airport is labelled a GDP any more (AADC "Actual" was not a reliable GDP signal); such airports show as controlled arrivals only.',
+    'Test button now reports whether the system notification was actually delivered.' ] },
   { v: '1.9.0', date: '2026-11-06', notes: [
     'Quick select hides departures from airports outside the USA (incl. Alaska, Hawaii, Puerto Rico, USVI, Guam), Canada and Mexico.',
     'Checkbox "Show departures from other countries" re-enables them (remembered). The flight list shows how many were hidden.' ] },
@@ -622,7 +641,13 @@ function statusPill(r){
 }
 
 // Instant (ms UTC) of the p-time, fixed when it was entered (closest HHMM to that moment).
-const pInst = r => r.ptime ? (r.pAt != null ? r.pAt : ptimeMs(r.ptime, Date.now())) : null;   // closest HHMM to when it was typed
+const pInst = r => {
+  if(!r.ptime) return null;
+  const c = ctlOf(r), ref = c ? c.t : ((r.res && r.res.etd) || Date.now());   // the flight's own date, not the computer's
+  let p = r.pAt != null ? r.pAt : null;
+  if(p == null || Math.abs(ref - p) > 18 * 3600000) p = ptimeMs(r.ptime, ref);
+  return p;
+};
 function relExpired(r){
   const p = pInst(r); if(p == null) return false;
   const x = r.res; if(x && (x.cancelled || x.etdType === 'A')) return false;   // departed / cancelled: nothing to release
@@ -633,9 +658,7 @@ const relDue = r => { const p = pInst(r); return p == null ? null : p + (RELEASE
 let lastRelSig = '';
 function checkRelease(){
   const list = getRecent(); let changed = false;
-  const next = list.map(r0 => {
-    // p-times saved by v1.9.5-1.9.9 may sit on the wrong day: re-anchor once to the closest HHMM to now
-    const r = (r0.ptime && r0.pAtV !== 2) ? (changed = true, {...r0, pAt: ptimeMs(r0.ptime, Date.now()), pAtV: 2}) : r0;
+  const next = list.map(r => {
     const exp = relExpired(r);
     if(exp && !r.pNotified){
       changed = true;
@@ -650,32 +673,15 @@ function checkRelease(){
   else if(sig !== lastRelSig){ lastRelSig = sig; drawRecent(); }
 }
 setInterval(checkRelease, 15000);
-function relTitle(r){
-  const p = pInst(r); if(p == null) return 'Enter the p-time (UTC, HHMM) this flight was sent with';
-  const x = r.res;
-  if(x && x.cancelled) return 'Cancelled: release not tracked';
-  if(x && x.etdType === 'A') return 'Departed: release no longer tracked';
-  return `Release expires ${fmtHM(new Date(p + RELEASE_MIN * 60000))} (2 h after p-time ${fmtHM(new Date(p))})`;
-}
-// p-time vs the current Zulu time (not the EDCT)
-function ptAgo(r){
-  const p = pInst(r); if(p == null) return null;
-  const x = r.res; if(x && (x.cancelled || x.etdType === 'A')) return null;
-  const d = Date.now() - p;
-  return { text: Math.abs(d) < 60000 ? 'p-time now' : d > 0 ? `${fmtMin(d)} ago` : `in ${fmtMin(d)}`, over: relExpired(r) };
-}
-function tickPt(){
-  const list = getRecent();
-  document.querySelectorAll('.pdelta').forEach(el => {
-    const r = list.find(x => keyOf(x) === el.dataset.k), a = r && ptAgo(r);
-    if(a){ el.textContent = a.text; el.classList.toggle('pd-later', a.over); }
-  });
-}
-setInterval(tickPt, 20000);
 function ptimeBox(r, k){
-  const a = ptAgo(r);
-  const tag = a ? `<br><span class="pdelta${a.over ? ' pd-later' : ''}" data-k="${k}" title="Time since the p-time (current Zulu minus p-time)">${a.text}</span>` : '';
-  return `<div class="pt-wrap" title="${esc(relTitle(r))}"><span class="pt-lbl">Release P-time</span><br><input class="pt-in" data-k="${k}" inputmode="numeric" maxlength="6" placeholder="HHMM" value="${esc(r.ptime || '')}" title="UTC, HHMM (the departure time the flight was sent with)" aria-label="Release P-time">${tag}</div>`;
+  let tag = '';
+  const cur = ctlOf(r), pm = cur ? pInst(r) : null;
+  if(pm != null && !(r.res && r.res.etdType === 'A')){
+    const d = cur.t - pm;
+    tag = Math.abs(d) < 60000 ? '<br><span class="pdelta">EDCT = p-time</span>'
+      : `<br><span class="pdelta ${d > 0 ? 'pd-later' : 'pd-earlier'}" title="EDCT vs p-time">${d > 0 ? '▲ +' : '▼ −'}${fmtMin(d)}</span>`;
+  }
+  return `<div class="pt-wrap"><span class="pt-lbl">Release P-time</span><br><input class="pt-in" data-k="${k}" inputmode="numeric" maxlength="6" placeholder="HHMM" value="${esc(r.ptime || '')}" title="UTC, HHMM (the departure time the flight was sent with)" aria-label="Release P-time">${tag}</div>`;
 }
 function setPtime(k, val){
   val = (val || '').trim();
@@ -684,8 +690,9 @@ function setPtime(k, val){
   if(val && !p){ if(inp){ inp.classList.add('bad'); inp.title = 'Use HHMM in UTC, e.g. 1430'; } return; }
   putRecent(getRecent().map(r => {
     if(keyOf(r) !== k) return r;
-    const {ptime, pAt, pAtV, pNotified, ...rest} = r;
-    return p ? {...rest, ptime: p.norm, pAt: ptimeMs(p.norm, Date.now()), pAtV: 2} : rest;
+    const {ptime, pAt, pNotified, ...rest} = r;
+    const c = ctlOf(r), ref = c ? c.t : ((r.res && r.res.etd) || Date.now());
+    return p ? {...rest, ptime: p.norm, pAt: ptimeMs(p.norm, ref)} : rest;
   }));
   checkRelease();
 }
@@ -854,7 +861,7 @@ function ptimeMs(ptime, refMs){
 // A refresh replaces the flight entry; carry the user's p-time fields over to the new one.
 function evaluatePtime(prev, out){
   const merged = {...out}, src = prev || out;
-  for(const f of ['ptime', 'pAt', 'pAtV', 'pNotified']){ if(src[f] !== undefined) merged[f] = src[f]; else delete merged[f]; }
+  for(const f of ['ptime', 'pAt', 'pNotified']){ if(src[f] !== undefined) merged[f] = src[f]; else delete merged[f]; }
   return merged;
 }
 function evaluateChange(prev, next){
